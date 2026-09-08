@@ -1,3 +1,5 @@
+import { recordEvent } from './event-journal.js';
+
 export type OrynEventName =
   | 'customer.created'
   | 'customer.updated'
@@ -33,6 +35,7 @@ export function publishEvent<TPayload extends Record<string, unknown>>(
     payload,
   };
 
+  recordEvent(event);
   const subscribers = handlers.get(name);
   if (subscribers) {
     for (const handler of subscribers) {
