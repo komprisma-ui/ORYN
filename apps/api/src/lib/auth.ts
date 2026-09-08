@@ -1,5 +1,5 @@
 import type { FastifyRequest } from 'fastify';
-import { createHmac, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 export type AuthUser = { id: string; organizationId: string; role: string; email: string };
 export type TenantContext = { organizationId: string; user: AuthUser | null };
@@ -13,12 +13,10 @@ const secret = () => {
 const b64 = (value: string) => Buffer.from(value).toString('base64url');
 const unb64 = (value: string) => Buffer.from(value, 'base64url').toString('utf8');
 
-export function hashPassword(password: string, salt = cryptoSalt()): string {
+export function hashPassword(password: string, salt = randomBytes(18).toString('base64url')): string {
   const derived = scryptSync(password, salt, 32, { N: 16384, r: 8, p: 1 }).toString('hex');
   return `scrypt$${salt}$${derived}`;
 }
-
-function cryptoSalt() { return Buffer.from(Math.random().toString(36) + Date.now().toString()).toString('base64url').slice(0, 24); }
 
 export function verifyPassword(password: string, stored: string): boolean {
   const [algorithm, salt, expected] = stored.split('$');
