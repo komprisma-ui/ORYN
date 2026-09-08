@@ -5,9 +5,10 @@ import sensible from '@fastify/sensible';
 import { z } from 'zod';
 import { prisma } from './lib/prisma.js';
 import { tenantContext } from './lib/auth.js';
+import { buildLeadInsights } from './modules/ai/insights.js';
 
 const app = Fastify({ logger: true, requestIdHeader: 'x-request-id' });
-await app.register(cors, { origin: true });
+await app.register(cors, { origin: process.env.WEB_ORIGIN ? process.env.WEB_ORIGIN.split(',').map(v => v.trim()) : true });
 await app.register(helmet);
 await app.register(sensible);
 
@@ -27,6 +28,11 @@ app.get('/api/v1/dashboard', async (request) => {
   ]);
   const hot = await prisma.customer.count({ where: { organizationId, status: 'HOT_LEAD', leadScore: { gte: 80 } } });
   return { data: { customers, conversations, followUps, activeLeads: leads, openChats, hotLeadsNeedingFollowUp: hot } };
+});
+
+app.get('/api/v1/ai/insights', async (request) => {
+  const { organizationId } = tenantContext(request);
+  return { data: await buildLeadInsights(organizationId) };
 });
 
 app.get('/api/v1/customers', async (request) => {
@@ -64,8 +70,7 @@ app.get('/api/v1/conversations/:id/messages', async (request) => {
   const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
   const conversation = await prisma.conversation.findFirst({ where: { id, organizationId }, select: { id: true } });
   if (!conversation) throw app.httpErrors.notFound('Conversation not found');
-  const data = await prisma.message.findMany({ where: { conversationId: id }, orderBy: { createdAt: 'asc' }, take: 500 });
-  return { data };
+  return { data: await prisma.message.findMany({ where: { conversationId: id }, orderBy: { createdAt: 'asc' }, take: 500 }) };
 });
 
 app.post('/api/v1/conversations/:id/messages', async (request, reply) => {
@@ -84,8 +89,7 @@ app.post('/api/v1/conversations/:id/messages', async (request, reply) => {
 
 app.get('/api/v1/follow-ups', async (request) => {
   const { organizationId } = tenantContext(request);
-  const data = await prisma.task.findMany({ where: { organizationId, status: { in: ['TODO','IN_PROGRESS'] } }, orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }], take: 100, include: { customer: true, assignee: true } });
-  return { data };
+  return { data: await prisma.task.findMany({ where: { organizationId, status: { in: ['TODO','IN_PROGRESS'] } }, orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }], take: 100, include: { customer: true, assignee: true } }) };
 });
 
 app.setErrorHandler((error, request, reply) => {
