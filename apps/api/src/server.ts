@@ -8,76 +8,131 @@ import { tenantContext } from './lib/auth.js';
 import { buildLeadInsights } from './modules/ai/insights.js';
 
 const app = Fastify({ logger: true, requestIdHeader: 'x-request-id' });
-await app.register(cors, { origin: process.env.WEB_ORIGIN ? process.env.WEB_ORIGIN.split(',').map(v => v.trim()) : true });
+const origins = (process.env.WEB_ORIGIN ?? '').split(',').map(v => v.trim()).filter(Boolean);
+await app.register(cors, { origin: origins.length ? origins : true });
 await app.register(helmet);
 await app.register(sensible);
 
-const customerCreate = z.object({ name: z.string().min(1).max(160), phone: z.string().max(40).optional(), email: z.string().email().optional(), source: z.string().max(80).optional(), status: z.enum(['NEW','ACTIVE','HOT_LEAD','WARM_LEAD','COLD_LEAD','CUSTOMER','VIP','INACTIVE','LOST']).optional(), leadScore: z.number().int().min(0).max(100).optional() });
-const messageCreate = z.object({ content: z.string().min(1).max(10000), contentType: z.string().max(40).default('text'), direction: z.enum(['INBOUND','OUTBOUND']).default('OUTBOUND'), senderType: z.string().max(40).default('user'), aiGenerated: z.boolean().default(false) });
+const idParam = z.object({ id: z.string().min(1).max(128) });
+const customerStatus = z.enum(['NEW','ACTIVE','HOT_LEAD','WARM_LEAD','COLD_LEAD','CUSTOMER','VIP','INACTIVE','LOST']);
+const customerCreate = z.object({ name: z.string().trim().min(1).max(160), phone: z.string().trim().max(40).optional(), email: z.string().email().optional(), source: z.string().trim().max(80).optional(), status: customerStatus.optional(), leadScore: z.number().int().min(0).max(100).optional(), notes: z.string().max(5000).optional(), assignedToId: z.string().min(1).max(128).nullable().optional() });
+const customerUpdate = customerCreate.partial();
+const messageCreate = z.object({ content: z.string().trim().min(1).max(10000), contentType: z.string().max(40).default('text'), direction: z.enum(['INBOUND','OUTBOUND']).default('OUTBOUND'), senderType: z.string().max(40).default('user'), aiGenerated: z.boolean().default(false) });
+const conversationUpdate = z.object({ status: z.enum(['OPEN','PENDING','CLOSED']).optional(), priority: z.number().int().min(0).max(100).optional(), subject: z.string().max(200).nullable().optional() }).refine(v => Object.keys(v).length > 0, 'At least one field is required');
+const taskUpdate = z.object({ status: z.enum(['TODO','IN_PROGRESS','DONE','CANCELED']).optional(), priority: z.number().int().min(0).max(100).optional(), dueAt: z.string().datetime().nullable().optional(), title: z.string().trim().min(1).max(240).optional() }).refine(v => Object.keys(v).length > 0, 'At least one field is required');
+const tagInput = z.object({ name: z.string().trim().min(1).max(60), color: z.string().trim().max(20).optional() });
 
-app.get('/health', async () => ({ ok: true, service: 'oryn-api', version: '0.2.0', time: new Date().toISOString() }));
+app.get('/health', async () => ({ ok: true, service: 'oryn-api', version: '0.3.0', time: new Date().toISOString() }));
 
-app.get('/api/v1/dashboard', async (request) => {
+app.get('/api/v1/dashboard', async request => {
   const { organizationId } = tenantContext(request);
-  const [customers, conversations, followUps, leads, openChats] = await Promise.all([
+  const [customers, conversations, followUps, leads, openChats, hotLeads, unreadMessages] = await Promise.all([
     prisma.customer.count({ where: { organizationId } }),
     prisma.conversation.count({ where: { organizationId } }),
     prisma.task.count({ where: { organizationId, status: { in: ['TODO','IN_PROGRESS'] } } }),
     prisma.lead.count({ where: { organizationId, stage: { notIn: ['WON','LOST'] } } }),
-    prisma.conversation.count({ where: { organizationId, status: 'OPEN' } })
+    prisma.conversation.count({ where: { organizationId, status: 'OPEN' } }),
+    prisma.customer.count({ where: { organizationId, status: 'HOT_LEAD', leadScore: { gte: 80 } } }),
+    prisma.message.count({ where: { conversation: { organizationId }, direction: 'INBOUND' } })
   ]);
-  const hot = await prisma.customer.count({ where: { organizationId, status: 'HOT_LEAD', leadScore: { gte: 80 } } });
-  return { data: { customers, conversations, followUps, activeLeads: leads, openChats, hotLeadsNeedingFollowUp: hot } };
+  return { data: { customers, conversations, followUps, activeLeads: leads, openChats, hotLeadsNeedingFollowUp: hotLeads, inboundMessages: unreadMessages } };
 });
 
-app.get('/api/v1/ai/insights', async (request) => {
+app.get('/api/v1/ai/insights', async request => {
   const { organizationId } = tenantContext(request);
   return { data: await buildLeadInsights(organizationId) };
 });
 
-app.get('/api/v1/customers', async (request) => {
+app.get('/api/v1/customers', async request => {
   const { organizationId } = tenantContext(request);
-  const query = z.object({ search: z.string().optional(), status: z.string().optional(), limit: z.coerce.number().int().min(1).max(100).default(25), cursor: z.string().optional() }).parse(request.query);
-  const data = await prisma.customer.findMany({ where: { organizationId, ...(query.status ? { status: query.status as any } : {}), ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { phone: { contains: query.search } }, { email: { contains: query.search, mode: 'insensitive' } }] } : {}) }, orderBy: { updatedAt: 'desc' }, take: query.limit, ...(query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}) });
+  const query = z.object({ search: z.string().trim().optional(), status: customerStatus.optional(), limit: z.coerce.number().int().min(1).max(100).default(25), cursor: z.string().optional() }).parse(request.query);
+  const data = await prisma.customer.findMany({ where: { organizationId, ...(query.status ? { status: query.status } : {}), ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { phone: { contains: query.search } }, { email: { contains: query.search, mode: 'insensitive' } }] } : {}) }, orderBy: { updatedAt: 'desc' }, take: query.limit, ...(query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}) });
   return { data };
 });
 
 app.post('/api/v1/customers', async (request, reply) => {
   const { organizationId } = tenantContext(request);
   const body = customerCreate.parse(request.body);
+  if (body.assignedToId) {
+    const assignee = await prisma.user.findFirst({ where: { id: body.assignedToId, organizationId }, select: { id: true } });
+    if (!assignee) throw app.httpErrors.badRequest('Invalid assignee');
+  }
   const customer = await prisma.customer.create({ data: { organizationId, ...body } });
   reply.code(201);
   return { data: customer };
 });
 
-app.get('/api/v1/customers/:id', async (request) => {
+app.patch('/api/v1/customers/:id', async (request) => {
   const { organizationId } = tenantContext(request);
-  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
-  const customer = await prisma.customer.findFirst({ where: { id, organizationId }, include: { tags: { include: { tag: true } }, conversations: { orderBy: { updatedAt: 'desc' }, take: 10, include: { channel: true } }, leads: { orderBy: { updatedAt: 'desc' }, take: 10 }, tasks: { orderBy: { dueAt: 'asc' }, take: 20 } } });
+  const { id } = idParam.parse(request.params);
+  const body = customerUpdate.parse(request.body);
+  const existing = await prisma.customer.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!existing) throw app.httpErrors.notFound('Customer not found');
+  if (body.assignedToId) {
+    const assignee = await prisma.user.findFirst({ where: { id: body.assignedToId, organizationId }, select: { id: true } });
+    if (!assignee) throw app.httpErrors.badRequest('Invalid assignee');
+  }
+  return { data: await prisma.customer.update({ where: { id }, data: body }) };
+});
+
+app.get('/api/v1/customers/:id', async request => {
+  const { organizationId } = tenantContext(request);
+  const { id } = idParam.parse(request.params);
+  const customer = await prisma.customer.findFirst({ where: { id, organizationId }, include: { tags: { include: { tag: true } }, conversations: { orderBy: { updatedAt: 'desc' }, take: 10, include: { channel: true } }, leads: { orderBy: { updatedAt: 'desc' }, take: 10 }, tasks: { orderBy: { dueAt: 'asc' }, take: 20, include: { assignee: true } } } });
   if (!customer) throw app.httpErrors.notFound('Customer not found');
   return { data: customer };
 });
 
-app.get('/api/v1/conversations', async (request) => {
+app.post('/api/v1/customers/:id/tags', async request => {
   const { organizationId } = tenantContext(request);
-  const query = z.object({ status: z.enum(['OPEN','PENDING','CLOSED']).optional(), limit: z.coerce.number().int().min(1).max(100).default(30) }).parse(request.query);
-  const data = await prisma.conversation.findMany({ where: { organizationId, ...(query.status ? { status: query.status } : {}) }, orderBy: [{ priority: 'desc' }, { lastMessageAt: 'desc' }], take: query.limit, include: { customer: true, channel: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } } });
+  const { id } = idParam.parse(request.params);
+  const body = tagInput.parse(request.body);
+  const customer = await prisma.customer.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!customer) throw app.httpErrors.notFound('Customer not found');
+  const tag = await prisma.tag.upsert({ where: { name: body.name }, update: { color: body.color }, create: body });
+  await prisma.customerTag.upsert({ where: { customerId_tagId: { customerId: id, tagId: tag.id } }, update: {}, create: { customerId: id, tagId: tag.id } });
+  return { data: tag };
+});
+
+app.delete('/api/v1/customers/:id/tags/:tagId', async request => {
+  const { organizationId } = tenantContext(request);
+  const { id, tagId } = z.object({ id: z.string().min(1), tagId: z.string().min(1) }).parse(request.params);
+  const customer = await prisma.customer.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!customer) throw app.httpErrors.notFound('Customer not found');
+  await prisma.customerTag.deleteMany({ where: { customerId: id, tagId } });
+  return { ok: true };
+});
+
+app.get('/api/v1/conversations', async request => {
+  const { organizationId } = tenantContext(request);
+  const query = z.object({ status: z.enum(['OPEN','PENDING','CLOSED']).optional(), search: z.string().trim().optional(), limit: z.coerce.number().int().min(1).max(100).default(30) }).parse(request.query);
+  const data = await prisma.conversation.findMany({ where: { organizationId, ...(query.status ? { status: query.status } : {}), ...(query.search ? { customer: { name: { contains: query.search, mode: 'insensitive' } } } : {}) }, orderBy: [{ priority: 'desc' }, { lastMessageAt: 'desc' }], take: query.limit, include: { customer: true, channel: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } } });
   return { data };
 });
 
-app.get('/api/v1/conversations/:id/messages', async (request) => {
+app.patch('/api/v1/conversations/:id', async request => {
   const { organizationId } = tenantContext(request);
-  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const { id } = idParam.parse(request.params);
+  const body = conversationUpdate.parse(request.body);
+  const existing = await prisma.conversation.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!existing) throw app.httpErrors.notFound('Conversation not found');
+  return { data: await prisma.conversation.update({ where: { id }, data: body }) };
+});
+
+app.get('/api/v1/conversations/:id/messages', async request => {
+  const { organizationId } = tenantContext(request);
+  const { id } = idParam.parse(request.params);
+  const query = z.object({ limit: z.coerce.number().int().min(1).max(500).default(500) }).parse(request.query);
   const conversation = await prisma.conversation.findFirst({ where: { id, organizationId }, select: { id: true } });
   if (!conversation) throw app.httpErrors.notFound('Conversation not found');
-  return { data: await prisma.message.findMany({ where: { conversationId: id }, orderBy: { createdAt: 'asc' }, take: 500 }) };
+  return { data: await prisma.message.findMany({ where: { conversationId: id }, orderBy: { createdAt: 'asc' }, take: query.limit }) };
 });
 
 app.post('/api/v1/conversations/:id/messages', async (request, reply) => {
   const { organizationId } = tenantContext(request);
-  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const { id } = idParam.parse(request.params);
   const body = messageCreate.parse(request.body);
-  const conversation = await prisma.conversation.findFirst({ where: { id, organizationId } });
+  const conversation = await prisma.conversation.findFirst({ where: { id, organizationId }, select: { id: true } });
   if (!conversation) throw app.httpErrors.notFound('Conversation not found');
   const [message] = await prisma.$transaction([
     prisma.message.create({ data: { conversationId: id, ...body } }),
@@ -87,9 +142,20 @@ app.post('/api/v1/conversations/:id/messages', async (request, reply) => {
   return { data: message };
 });
 
-app.get('/api/v1/follow-ups', async (request) => {
+app.get('/api/v1/follow-ups', async request => {
   const { organizationId } = tenantContext(request);
-  return { data: await prisma.task.findMany({ where: { organizationId, status: { in: ['TODO','IN_PROGRESS'] } }, orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }], take: 100, include: { customer: true, assignee: true } }) };
+  const query = z.object({ status: z.enum(['TODO','IN_PROGRESS','DONE','CANCELED']).optional() }).parse(request.query);
+  return { data: await prisma.task.findMany({ where: { organizationId, ...(query.status ? { status: query.status } : { status: { in: ['TODO','IN_PROGRESS'] } }) }, orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }], take: 100, include: { customer: true, assignee: true } }) };
+});
+
+app.patch('/api/v1/follow-ups/:id', async request => {
+  const { organizationId } = tenantContext(request);
+  const { id } = idParam.parse(request.params);
+  const body = taskUpdate.parse(request.body);
+  const existing = await prisma.task.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!existing) throw app.httpErrors.notFound('Follow-up not found');
+  const data = { ...body, ...(body.dueAt !== undefined ? { dueAt: body.dueAt ? new Date(body.dueAt) : null } : {}) };
+  return { data: await prisma.task.update({ where: { id }, data }) };
 });
 
 app.setErrorHandler((error, request, reply) => {
