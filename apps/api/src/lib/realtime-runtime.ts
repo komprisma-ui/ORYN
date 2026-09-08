@@ -13,7 +13,7 @@ export function attachEventStream(
 ): () => void {
   const recent = getRecentEvents(organizationId, 100);
   const start = lastEventId ? recent.findIndex(event => event.id === lastEventId) : -1;
-  const backlog = start >= 0 ? recent.slice(0, start) .reverse() : [...recent].reverse();
+  const backlog = start >= 0 ? recent.slice(0, start).reverse() : [...recent].reverse();
 
   for (const event of backlog) {
     writer.write(`id: ${event.id}\nevent: ${event.name}\ndata: ${JSON.stringify(event)}\n\n`);
