@@ -23,7 +23,7 @@ export const prisma = basePrisma.$extends({
   query: {
     $allModels: {
       async $allOperations({ model, operation, args, query }) {
-        const result = await query(args);
+        const result: unknown = await query(args);
         if (!model || !isRecord(result)) return result;
         if (operation !== 'create' && operation !== 'update') return result;
 
