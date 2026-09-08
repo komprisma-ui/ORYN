@@ -1,21 +1,229 @@
-datasource db { provider = "postgresql" url = env("DATABASE_URL") }
-generator client { provider = "prisma-client-js" }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
-enum UserRole { OWNER ADMIN MANAGER SUPERVISOR SALES CUSTOMER_SERVICE }
-enum CustomerStatus { NEW ACTIVE HOT_LEAD WARM_LEAD COLD_LEAD CUSTOMER VIP INACTIVE LOST }
-enum ChannelType { WHATSAPP INSTAGRAM WEB_CHAT TELEGRAM EMAIL OTHER }
-enum ConversationStatus { OPEN PENDING CLOSED }
-enum LeadStage { NEW CONTACTED INTERESTED QUALIFIED OFFER NEGOTIATION WON LOST }
-enum TaskStatus { TODO IN_PROGRESS DONE CANCELED }
+generator client {
+  provider = "prisma-client-js"
+}
 
-model Organization { id String @id @default(cuid()) name String users User[] customers Customer[] channels Channel[] conversations Conversation[] leads Lead[] tasks Task[] tags Tag[] createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
-model User { id String @id @default(cuid()) organizationId String organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade) name String email String role UserRole @default(CUSTOMER_SERVICE) passwordHash String? assignedCustomers Customer[] @relation("CustomerAssignee") assignedTasks Task[] createdAt DateTime @default(now()) @@unique([organizationId,email]) }
-model Customer { id String @id @default(cuid()) organizationId String organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade) assignedToId String? assignedTo User? @relation("CustomerAssignee", fields:[assignedToId], references:[id]) name String phone String? email String? status CustomerStatus @default(NEW) leadScore Int? source String? notes String? tags CustomerTag[] conversations Conversation[] leads Lead[] tasks Task[] createdAt DateTime @default(now()) updatedAt DateTime @updatedAt @@index([organizationId,status]) @@index([organizationId,phone]) }
-model Tag { id String @id @default(cuid()) organizationId String organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade) name String color String? customers CustomerTag[] @@unique([organizationId,name]) }
-model CustomerTag { customerId String tagId String customer Customer @relation(fields:[customerId], references:[id], onDelete:Cascade) tag Tag @relation(fields:[tagId], references:[id], onDelete:Cascade) @@id([customerId,tagId]) }
-model Channel { id String @id @default(cuid()) organizationId String organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade) type ChannelType name String externalId String? credentialsRef String? active Boolean @default(true) conversations Conversation[] }
-model Conversation { id String @id @default(cuid()) organizationId String organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade) customerId String customer Customer @relation(fields:[customerId], references:[id], onDelete:Cascade) channelId String channel Channel @relation(fields:[channelId], references:[id]) status ConversationStatus @default(OPEN) subject String? priority Int @default(0) lastMessageAt DateTime? messages Message[] createdAt DateTime @default(now()) updatedAt DateTime @updatedAt @@index([organizationId,status]) }
-model Message { id String @id @default(cuid()) conversationId String conversation Conversation @relation(fields:[conversationId], references:[id], onDelete:Cascade) direction String content String contentType String @default("text") externalId String? senderType String @default("customer") aiGenerated Boolean @default(false) createdAt DateTime @default(now()) @@index([conversationId,createdAt]) }
-model Lead { id String @id @default(cuid()) organizationId String organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade) customerId String customer Customer @relation(fields:[customerId], references:[id], onDelete:Cascade) stage LeadStage @default(NEW) value Decimal? probability Int? ownerId String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt @@index([organizationId,stage]) }
-model Task { id String @id @default(cuid()) organizationId String organization Organization @relation(fields:[organizationId], references:[id], onDelete:Cascade) customerId String? customer Customer? @relation(fields:[customerId], references:[id]) assigneeId String? assignee User? @relation(fields:[assigneeId], references:[id]) title String dueAt DateTime? priority Int @default(0) status TaskStatus @default(TODO) source String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt @@index([organizationId,status,dueAt]) }
-model AuditLog { id String @id @default(cuid()) organizationId String action String actorId String? entityType String entityId String? metadata Json? createdAt DateTime @default(now()) @@index([organizationId,createdAt]) }
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  SALES
+  CUSTOMER_SERVICE
+}
+
+enum CustomerStatus {
+  NEW
+  ACTIVE
+  HOT_LEAD
+  WARM_LEAD
+  COLD_LEAD
+  CUSTOMER
+  VIP
+  INACTIVE
+  LOST
+}
+
+enum ChannelType {
+  WHATSAPP
+  INSTAGRAM
+  WEB_CHAT
+  TELEGRAM
+  EMAIL
+  OTHER
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  CLOSED
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  INTERESTED
+  QUALIFIED
+  OFFER
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELED
+}
+
+model Organization {
+  id             String         @id @default(cuid())
+  name           String
+  users          User[]
+  customers      Customer[]
+  channels       Channel[]
+  conversations  Conversation[]
+  leads          Lead[]
+  tasks          Task[]
+  tags           Tag[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model User {
+  id               String     @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  email            String
+  role             UserRole   @default(CUSTOMER_SERVICE)
+  passwordHash     String?
+  assignedCustomers Customer[] @relation("CustomerAssignee")
+  assignedTasks    Task[]
+  createdAt        DateTime   @default(now())
+
+  @@unique([organizationId, email])
+}
+
+model Customer {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedToId   String?
+  assignedTo     User?        @relation("CustomerAssignee", fields: [assignedToId], references: [id])
+  name           String
+  phone          String?
+  email          String?
+  status         CustomerStatus @default(NEW)
+  leadScore      Int?
+  source         String?
+  notes          String?
+  tags           CustomerTag[]
+  conversations  Conversation[]
+  leads          Lead[]
+  tasks          Task[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, phone])
+}
+
+model Tag {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  color          String?
+  customers      CustomerTag[]
+
+  @@unique([organizationId, name])
+}
+
+model CustomerTag {
+  customerId String
+  tagId      String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, tagId])
+}
+
+model Channel {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           ChannelType
+  name           String
+  externalId     String?
+  credentialsRef String?
+  active         Boolean      @default(true)
+  conversations  Conversation[]
+}
+
+model Conversation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channelId      String
+  channel        Channel      @relation(fields: [channelId], references: [id])
+  status         ConversationStatus @default(OPEN)
+  subject        String?
+  priority       Int          @default(0)
+  lastMessageAt  DateTime?
+  messages       Message[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, status])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction      String
+  content        String
+  contentType    String       @default("text")
+  externalId     String?
+  senderType     String       @default("customer")
+  aiGenerated    Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Lead {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  stage          LeadStage    @default(NEW)
+  value          Decimal?
+  probability    Int?
+  ownerId        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, stage])
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  assigneeId     String?
+  assignee       User?        @relation(fields: [assigneeId], references: [id])
+  title          String
+  dueAt          DateTime?
+  priority       Int          @default(0)
+  status         TaskStatus   @default(TODO)
+  source         String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, status, dueAt])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  action         String
+  actorId        String?
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
