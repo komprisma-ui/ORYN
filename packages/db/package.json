@@ -1,0 +1,1 @@
+{"name":"@oryn/db","private":true,"scripts":{"generate":"prisma generate","push":"prisma db push"},"dependencies":{"@prisma/client":"^6.15.0","prisma":"^6.15.0"}}
