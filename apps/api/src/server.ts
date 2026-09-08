@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { prisma } from './lib/prisma.js';
 import { authUser, createSession, tenantContext, verifyPassword } from './lib/auth.js';
 import { buildLeadInsights } from './modules/ai/insights.js';
+import { registerEventRoutes } from './modules/events/routes.js';
 
 const app = Fastify({ logger: true, requestIdHeader: 'x-request-id' });
 const origins = (process.env.WEB_ORIGIN ?? '').split(',').map(v => v.trim()).filter(Boolean);
@@ -45,6 +46,7 @@ app.get('/api/v1/auth/me', async request => { const user = authUser(request); co
 
 app.get('/api/v1/dashboard', async request => { const { organizationId } = tenantContext(request); const [customers, conversations, followUps, leads, openChats, hotLeads, inboundMessages] = await Promise.all([prisma.customer.count({ where: { organizationId } }), prisma.conversation.count({ where: { organizationId } }), prisma.task.count({ where: { organizationId, status: { in: ['TODO','IN_PROGRESS'] } } }), prisma.lead.count({ where: { organizationId, stage: { notIn: ['WON','LOST'] } } }), prisma.conversation.count({ where: { organizationId, status: 'OPEN' } }), prisma.customer.count({ where: { organizationId, status: 'HOT_LEAD', leadScore: { gte: 80 } } }), prisma.message.count({ where: { conversation: { organizationId }, direction: 'INBOUND' } })]); return { data: { customers, conversations, followUps, activeLeads: leads, openChats, hotLeadsNeedingFollowUp: hotLeads, inboundMessages } }; });
 app.get('/api/v1/ai/insights', async request => { const { organizationId } = tenantContext(request); return { data: await buildLeadInsights(organizationId) }; });
+await registerEventRoutes(app);
 
 app.get('/api/v1/customers', async request => { const { organizationId } = tenantContext(request); const query = z.object({ search: z.string().trim().optional(), status: customerStatus.optional(), limit: z.coerce.number().int().min(1).max(100).default(25), cursor: z.string().optional() }).parse(request.query); const data = await prisma.customer.findMany({ where: { organizationId, ...(query.status ? { status: query.status } : {}), ...(query.search ? { OR: [{ name: { contains: query.search, mode: 'insensitive' } }, { phone: { contains: query.search } }, { email: { contains: query.search, mode: 'insensitive' } }] } : {}) }, orderBy: { updatedAt: 'desc' }, take: query.limit, ...(query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}) }); return { data }; });
 app.post('/api/v1/customers', async (request, reply) => { const { organizationId } = tenantContext(request); const body = customerCreate.parse(request.body); if (body.assignedToId && !await prisma.user.findFirst({ where: { id: body.assignedToId, organizationId }, select: { id: true } })) throw app.httpErrors.badRequest('Invalid assignee'); reply.code(201); return { data: await prisma.customer.create({ data: { organizationId, ...body } }) }; });
