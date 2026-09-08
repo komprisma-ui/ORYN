@@ -1,9 +1,20 @@
 {
   "name": "oryn",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ORYN — Intelligent Customer Operations",
-  "scripts": {"dev": "concurrently \"npm:dev:web\" \"npm:dev:api\"", "dev:web": "npm --workspace @oryn/web run dev", "dev:api": "npm --workspace @oryn/api run dev", "build": "npm run build:web && npm run build:api", "build:web": "npm --workspace @oryn/web run build", "build:api": "npm --workspace @oryn/api run build", "db:generate": "npm --workspace @oryn/db run generate", "db:push": "npm --workspace @oryn/db run push"},
+  "scripts": {
+    "dev": "concurrently \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "npm --workspace @oryn/web run dev",
+    "dev:api": "npm --workspace @oryn/api run dev",
+    "build": "npm run build:web && npm run build:api",
+    "build:web": "npm --workspace @oryn/web run build",
+    "build:api": "npm --workspace @oryn/api run build",
+    "typecheck": "npm --workspace @oryn/api run typecheck",
+    "db:generate": "npm --workspace @oryn/db run generate",
+    "db:push": "npm --workspace @oryn/db run push",
+    "db:seed": "npm --workspace @oryn/db run seed"
+  },
   "workspaces": ["apps/*", "packages/*"],
   "devDependencies": {"concurrently": "^9.2.1", "typescript": "^5.9.2"}
 }
