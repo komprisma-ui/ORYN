@@ -85,6 +85,7 @@ model User {
   passwordHash     String?
   assignedCustomers Customer[] @relation("CustomerAssignee")
   assignedTasks    Task[]
+  ownedLeads       Lead[]     @relation("LeadOwner")
   createdAt        DateTime   @default(now())
 
   @@unique([organizationId, email])
@@ -144,6 +145,9 @@ model Channel {
   credentialsRef String?
   active         Boolean      @default(true)
   conversations  Conversation[]
+
+  @@index([organizationId, type])
+  @@index([organizationId, externalId])
 }
 
 model Conversation {
@@ -163,6 +167,7 @@ model Conversation {
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId, status])
+  @@index([organizationId, lastMessageAt])
 }
 
 model Message {
@@ -190,10 +195,12 @@ model Lead {
   value          Decimal?
   probability    Int?
   ownerId        String?
+  owner          User?        @relation("LeadOwner", fields: [ownerId], references: [id])
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId, stage])
+  @@index([organizationId, ownerId])
 }
 
 model Task {
