@@ -19,29 +19,18 @@ export type OrynEvent<TPayload = Record<string, unknown>> = {
 };
 
 type Handler = (event: OrynEvent) => void | Promise<void>;
-
 const handlers = new Map<OrynEventName, Set<Handler>>();
+const allHandlers = new Set<Handler>();
 
 export function publishEvent<TPayload extends Record<string, unknown>>(
   name: OrynEventName,
   organizationId: string,
   payload: TPayload,
 ): OrynEvent<TPayload> {
-  const event: OrynEvent<TPayload> = {
-    id: crypto.randomUUID(),
-    name,
-    organizationId,
-    occurredAt: new Date().toISOString(),
-    payload,
-  };
-
+  const event: OrynEvent<TPayload> = { id: crypto.randomUUID(), name, organizationId, occurredAt: new Date().toISOString(), payload };
   recordEvent(event);
-  const subscribers = handlers.get(name);
-  if (subscribers) {
-    for (const handler of subscribers) {
-      Promise.resolve(handler(event)).catch(() => undefined);
-    }
-  }
+  const subscribers = new Set<Handler>([...(handlers.get(name) ?? []), ...allHandlers]);
+  for (const handler of subscribers) Promise.resolve(handler(event)).catch(() => undefined);
   return event;
 }
 
@@ -52,6 +41,12 @@ export function subscribeEvent(name: OrynEventName, handler: Handler): () => voi
   return () => subscribers.delete(handler);
 }
 
+export function subscribeAllEvents(handler: Handler): () => void {
+  allHandlers.add(handler);
+  return () => allHandlers.delete(handler);
+}
+
 export function clearEventSubscribers(): void {
   handlers.clear();
+  allHandlers.clear();
 }
