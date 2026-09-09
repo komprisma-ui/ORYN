@@ -4,8 +4,11 @@ import { tenantContext } from '../../lib/auth.js';
 import { getRecentEvents } from '../../lib/event-journal.js';
 import { realtimeClientCount } from '../../lib/realtime.js';
 import { attachEventStream } from '../../lib/realtime-runtime.js';
+import { registerAutomationRoutes } from '../automation/routes.js';
 
 export async function registerEventRoutes(app: FastifyInstance): Promise<void> {
+  await registerAutomationRoutes(app);
+
   app.get('/api/v1/events', async request => {
     const { organizationId } = tenantContext(request);
     const raw = (request.query as { limit?: string }).limit;
