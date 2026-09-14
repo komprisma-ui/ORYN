@@ -10,7 +10,9 @@ import { initializeAutomationOrchestrator } from './modules/automation/orchestra
 import { registerEventRoutes } from './modules/events/routes.js';
 
 const app = Fastify({ logger: true, requestIdHeader: 'x-request-id' });
+const isProduction = process.env.NODE_ENV === 'production';
 const origins = (process.env.WEB_ORIGIN ?? '').split(',').map(v => v.trim()).filter(Boolean);
+if (isProduction && origins.length === 0) throw new Error('WEB_ORIGIN must be configured in production');
 await app.register(cors, { origin: origins.length ? origins : true });
 await app.register(helmet);
 await app.register(sensible);
@@ -106,7 +108,8 @@ app.post('/api/v1/customers/:id/tags', async request => {
 app.delete('/api/v1/customers/:id/tags/:tagId', async request => {
   const { organizationId } = tenantContext(request); const { id, tagId } = z.object({ id: z.string(), tagId: z.string() }).parse(request.params);
   const customer = await prisma.customer.findFirst({ where: { id, organizationId }, select: { id: true } }); if (!customer) return { error: 'CUSTOMER_NOT_FOUND' };
-  await prisma.customerTag.deleteMany({ where: { customerId: id, tagId } }); return { data: { ok: true } };
+  const tag = await prisma.tag.findFirst({ where: { id: tagId, organizationId }, select: { id: true } }); if (!tag) return { error: 'TAG_NOT_FOUND' };
+  await prisma.customerTag.deleteMany({ where: { customerId: id, tagId: tag.id } }); return { data: { ok: true } };
 });
 
 app.get('/api/v1/leads', async request => {
@@ -160,12 +163,13 @@ app.post('/api/v1/follow-ups', async request => {
   const { organizationId } = tenantContext(request); const body = taskCreate.parse(request.body);
   if (body.customerId) { const customer = await prisma.customer.findFirst({ where: { id: body.customerId, organizationId }, select: { id: true } }); if (!customer) return { error: 'CUSTOMER_NOT_FOUND' }; }
   if (body.assigneeId) { const assignee = await prisma.user.findFirst({ where: { id: body.assigneeId, organizationId }, select: { id: true } }); if (!assignee) return { error: 'ASSIGNEE_NOT_FOUND' }; }
-  return { data: await prisma.task.create({ data: { organizationId, ...body } }) };
+  return { data: await prisma.task.create({ data: { organizationId, ...body, dueAt: body.dueAt ? new Date(body.dueAt) : null } }) };
 });
 
 app.patch('/api/v1/follow-ups/:id', async request => {
   const { organizationId } = tenantContext(request); const { id } = idParam.parse(request.params); const body = taskUpdate.parse(request.body);
-  const result = await prisma.task.updateMany({ where: { id, organizationId }, data: body }); if (!result.count) return { error: 'FOLLOW_UP_NOT_FOUND' }; return { data: await prisma.task.findFirst({ where: { id, organizationId }, include: { customer: true, assignee: { select: { name: true } } } }) };
+  const data = { ...body, ...(body.dueAt !== undefined ? { dueAt: body.dueAt ? new Date(body.dueAt) : null } : {}) };
+  const result = await prisma.task.updateMany({ where: { id, organizationId }, data }); if (!result.count) return { error: 'FOLLOW_UP_NOT_FOUND' }; return { data: await prisma.task.findFirst({ where: { id, organizationId }, include: { customer: true, assignee: { select: { name: true } } } }) };
 });
 
 app.setErrorHandler((error, request, reply) => {
