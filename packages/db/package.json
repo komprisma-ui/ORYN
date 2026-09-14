@@ -1,1 +1,18 @@
-{"name":"@oryn/db","private":true,"scripts":{"generate":"prisma generate","push":"prisma db push","seed":"tsx prisma/seed.ts"},"dependencies":{"@prisma/client":"^6.15.0","prisma":"^6.15.0"},"devDependencies":{"tsx":"^4.20.3"}}
+{
+  "name": "@oryn/db",
+  "private": true,
+  "scripts": {
+    "generate": "prisma generate",
+    "push": "prisma db push",
+    "migrate": "prisma migrate dev",
+    "deploy": "prisma migrate deploy",
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.15.0",
+    "prisma": "^6.15.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3"
+  }
+}
