@@ -13,6 +13,8 @@
     "typecheck": "npm --workspace @oryn/api run typecheck",
     "db:generate": "npm --workspace @oryn/db run generate",
     "db:push": "npm --workspace @oryn/db run push",
+    "db:migrate": "npm --workspace @oryn/db run migrate",
+    "db:deploy": "npm --workspace @oryn/db run deploy",
     "db:seed": "npm --workspace @oryn/db run seed"
   },
   "workspaces": ["apps/*", "packages/*"],
