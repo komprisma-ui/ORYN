@@ -34,21 +34,25 @@ export function createSession(user: AuthUser, ttlSeconds = 60 * 60 * 12): string
 }
 
 export function verifySession(token: string): AuthUser {
-  const [payload, signature] = token.split('.');
-  if (!payload || !signature) throw new Error('Invalid session');
+  const parts = token.split('.');
+  if (parts.length !== 2) throw new Error('Invalid session');
+  const [payload, signature] = parts;
   const expected = createHmac('sha256', secret()).update(payload).digest('base64url');
   const a = Buffer.from(signature, 'utf8');
   const b = Buffer.from(expected, 'utf8');
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error('Invalid session');
-  const data = JSON.parse(unb64(payload)) as AuthUser & { exp: number };
-  if (!data.id || !data.organizationId || !data.email || data.exp < Math.floor(Date.now() / 1000)) throw new Error('Session expired');
+  let data: AuthUser & { exp: number };
+  try { data = JSON.parse(unb64(payload)) as AuthUser & { exp: number }; } catch { throw new Error('Invalid session'); }
+  if (!data.id || !data.organizationId || !data.email || !Number.isInteger(data.exp) || data.exp < Math.floor(Date.now() / 1000)) throw new Error('Session expired');
   return { id: data.id, organizationId: data.organizationId, role: data.role, email: data.email };
 }
 
 export function authUser(request: FastifyRequest): AuthUser {
   const header = request.headers.authorization;
   if (!header?.startsWith('Bearer ')) throw new Error('Authentication required');
-  return verifySession(header.slice(7).trim());
+  const token = header.slice(7).trim();
+  if (!token) throw new Error('Authentication required');
+  return verifySession(token);
 }
 
 export function tenantContext(request: FastifyRequest): TenantContext {
