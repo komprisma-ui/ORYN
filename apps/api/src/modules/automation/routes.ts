@@ -13,10 +13,10 @@ function parseLimit(raw: unknown): number | null {
 }
 
 export async function registerAutomationRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/api/v1/automation/actions', async request => {
+  app.get('/api/v1/automation/actions', async (request, reply) => {
     const { organizationId } = tenantContext(request);
     const limit = parseLimit((request.query as { limit?: string }).limit);
-    if (limit === null) return { error: 'INVALID_LIMIT' };
+    if (limit === null) return reply.code(400).send({ error: 'INVALID_LIMIT' });
     return { data: await getPendingAutomationActions(organizationId, limit) };
   });
 
@@ -25,12 +25,12 @@ export async function registerAutomationRoutes(app: FastifyInstance): Promise<vo
     return { data: await getAutomationStatus(organizationId) };
   });
 
-  app.post('/api/v1/automation/actions/:id/ack', async request => {
+  app.post('/api/v1/automation/actions/:id/ack', async (request, reply) => {
     const { organizationId, user } = tenantContext(request);
-    const actionId = (request.params as { id: string }).id;
-    if (!actionId) return { error: 'INVALID_ACTION_ID' };
+    const actionId = (request.params as { id?: string }).id;
+    if (!actionId) return reply.code(400).send({ error: 'INVALID_ACTION_ID' });
     const action = await acknowledgeAutomationAction(organizationId, actionId, user?.id ?? 'system');
-    if (!action) return { error: 'ACTION_NOT_FOUND' };
+    if (!action) return reply.code(404).send({ error: 'ACTION_NOT_FOUND' });
     return { data: action };
   });
 }
