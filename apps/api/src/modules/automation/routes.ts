@@ -17,20 +17,19 @@ export async function registerAutomationRoutes(app: FastifyInstance): Promise<vo
     const { organizationId } = tenantContext(request);
     const limit = parseLimit((request.query as { limit?: string }).limit);
     if (limit === null) return { error: 'INVALID_LIMIT' };
-    return { data: getPendingAutomationActions(organizationId, limit) };
+    return { data: await getPendingAutomationActions(organizationId, limit) };
   });
 
   app.get('/api/v1/automation/status', async request => {
     const { organizationId } = tenantContext(request);
-    return { data: getAutomationStatus(organizationId) };
+    return { data: await getAutomationStatus(organizationId) };
   });
 
   app.post('/api/v1/automation/actions/:id/ack', async request => {
     const { organizationId, user } = tenantContext(request);
     const actionId = (request.params as { id: string }).id;
     if (!actionId) return { error: 'INVALID_ACTION_ID' };
-
-    const action = acknowledgeAutomationAction(organizationId, actionId, user?.id ?? 'system');
+    const action = await acknowledgeAutomationAction(organizationId, actionId, user?.id ?? 'system');
     if (!action) return { error: 'ACTION_NOT_FOUND' };
     return { data: action };
   });
