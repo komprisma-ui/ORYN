@@ -5,41 +5,19 @@ import { prisma } from '../../lib/prisma.js';
 export type AutomationActionStatus = 'PENDING' | 'ACKNOWLEDGED';
 export type AutomationActionType = 'AI_INSIGHT' | 'FOLLOW_UP_SUGGESTION' | 'INBOX_ALERT';
 
-export type AutomationAction = {
-  id: string;
-  organizationId: string;
-  eventId: string;
-  type: AutomationActionType;
-  reason: string;
-  status: AutomationActionStatus;
-  createdAt: string;
-  acknowledgedAt?: string;
-  acknowledgedBy?: string;
-};
+export type AutomationAction = { id: string; organizationId: string; eventId: string; type: AutomationActionType; reason: string; status: AutomationActionStatus; createdAt: string; acknowledgedAt?: string; acknowledgedBy?: string };
 
 let initialized = false;
 
 function enqueue(event: OrynEvent, type: AutomationActionType, reason: string): void {
-  void prisma.automationAction.create({
-    data: { organizationId: event.organizationId, eventId: event.id, type, reason },
-  }).catch(error => {
+  void prisma.automationAction.create({ data: { organizationId: event.organizationId, eventId: event.id, type, reason } }).catch(error => {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return;
     console.error('[ORYN automation] failed to persist action', error);
   });
 }
 
 function toAction(row: { id: string; organizationId: string; eventId: string; type: AutomationActionType; reason: string; status: AutomationActionStatus; createdAt: Date; acknowledgedAt: Date | null; acknowledgedBy: string | null }): AutomationAction {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    eventId: row.eventId,
-    type: row.type,
-    reason: row.reason,
-    status: row.status,
-    createdAt: row.createdAt.toISOString(),
-    ...(row.acknowledgedAt ? { acknowledgedAt: row.acknowledgedAt.toISOString() } : {}),
-    ...(row.acknowledgedBy ? { acknowledgedBy: row.acknowledgedBy } : {}),
-  };
+  return { id: row.id, organizationId: row.organizationId, eventId: row.eventId, type: row.type, reason: row.reason, status: row.status, createdAt: row.createdAt.toISOString(), ...(row.acknowledgedAt ? { acknowledgedAt: row.acknowledgedAt.toISOString() } : {}), ...(row.acknowledgedBy ? { acknowledgedBy: row.acknowledgedBy } : {}) };
 }
 
 export function initializeAutomationOrchestrator(): void {
@@ -80,3 +58,6 @@ export async function acknowledgeAutomationAction(organizationId: string, action
 export function clearAutomationActions(): void {
   // Persistence is intentional: actions survive API restarts. Database cleanup is explicit.
 }
+
+// Initialize on module load so every API process activates the orchestrator exactly once.
+initializeAutomationOrchestrator();
