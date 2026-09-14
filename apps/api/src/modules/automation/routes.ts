@@ -26,11 +26,11 @@ export async function registerAutomationRoutes(app: FastifyInstance): Promise<vo
   });
 
   app.post('/api/v1/automation/actions/:id/ack', async request => {
-    const { organizationId, userId } = tenantContext(request);
+    const { organizationId, user } = tenantContext(request);
     const actionId = (request.params as { id: string }).id;
     if (!actionId) return { error: 'INVALID_ACTION_ID' };
 
-    const action = acknowledgeAutomationAction(organizationId, actionId, userId);
+    const action = acknowledgeAutomationAction(organizationId, actionId, user?.id ?? 'system');
     if (!action) return { error: 'ACTION_NOT_FOUND' };
     return { data: action };
   });
