@@ -2,7 +2,7 @@ import type { FastifyRequest } from 'fastify';
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 export type AuthUser = { id: string; organizationId: string; role: string; email: string };
-export type TenantContext = { organizationId: string; user: AuthUser | null };
+export type TenantContext = { organizationId: string; user: AuthUser };
 
 const secret = () => {
   const value = process.env.AUTH_SECRET;
