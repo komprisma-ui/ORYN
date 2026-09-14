@@ -9,9 +9,25 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: oryn
+          POSTGRES_PASSWORD: oryn
+          POSTGRES_DB: oryn_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U oryn -d oryn_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql://oryn:oryn@localhost:5432/oryn_ci?schema=public
       API_PORT: 4000
+      AUTH_SECRET: ci-only-secret-that-is-at-least-32-characters-long
+      WEB_ORIGIN: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,5 +35,6 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npm run db:generate
+      - run: npm run db:deploy
       - run: npm run typecheck
       - run: npm run build
