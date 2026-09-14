@@ -30,7 +30,7 @@ function sanitizeChanges(row: Record<string, unknown>): Record<string, unknown> 
 }
 
 async function findUniqueUpdatedEntity(model: string, id: string): Promise<Record<string, unknown> | null> {
-  const delegates: Record<string, { findUnique: (args: { where: { id: string } }) => Promise<unknown> }> = {
+  const delegates: Record<string, any> = {
     Customer: basePrisma.customer,
     Conversation: basePrisma.conversation,
     Lead: basePrisma.lead,
@@ -51,8 +51,9 @@ export const prisma = basePrisma.$extends({
 
         if (operation === 'updateMany') {
           if (!isRecord(result) || typeof result.count !== 'number' || result.count !== 1) return result;
-          const rawArgs = isRecord(args) ? args : {};
-          const where = isRecord(rawArgs.where) ? rawArgs.where : {};
+          const rawArgs: Record<string, unknown> = isRecord(args) ? args : {};
+          const rawWhere = rawArgs.where;
+          const where: Record<string, unknown> = isRecord(rawWhere) ? rawWhere : {};
           const entityId = typeof where.id === 'string' ? where.id : undefined;
           if (!entityId) return result;
           const row = await findUniqueUpdatedEntity(model, entityId);
