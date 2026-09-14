@@ -1,12 +1,14 @@
 import { subscribeEvent, type OrynEvent } from '../../lib/event-bus.js';
+import { prisma } from '../../lib/prisma.js';
 
 export type AutomationActionStatus = 'PENDING' | 'ACKNOWLEDGED';
+export type AutomationActionType = 'AI_INSIGHT' | 'FOLLOW_UP_SUGGESTION' | 'INBOX_ALERT';
 
 export type AutomationAction = {
   id: string;
   organizationId: string;
   eventId: string;
-  type: 'AI_INSIGHT' | 'FOLLOW_UP_SUGGESTION' | 'INBOX_ALERT';
+  type: AutomationActionType;
   reason: string;
   status: AutomationActionStatus;
   createdAt: string;
@@ -14,76 +16,70 @@ export type AutomationAction = {
   acknowledgedBy?: string;
 };
 
-const actions: AutomationAction[] = [];
 let initialized = false;
 
-function enqueue(event: OrynEvent, type: AutomationAction['type'], reason: string): void {
-  actions.push({
-    id: crypto.randomUUID(),
-    organizationId: event.organizationId,
-    eventId: event.id,
-    type,
-    reason,
-    status: 'PENDING',
-    createdAt: new Date().toISOString(),
-  });
-  if (actions.length > 1000) actions.splice(0, actions.length - 1000);
+function enqueue(event: OrynEvent, type: AutomationActionType, reason: string): void {
+  void prisma.automationAction.create({
+    data: { organizationId: event.organizationId, eventId: event.id, type, reason },
+  }).catch(() => undefined);
+}
+
+function toAction(row: { id: string; organizationId: string; eventId: string; type: AutomationActionType; reason: string; status: AutomationActionStatus; createdAt: Date; acknowledgedAt: Date | null; acknowledgedBy: string | null }): AutomationAction {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    eventId: row.eventId,
+    type: row.type,
+    reason: row.reason,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    ...(row.acknowledgedAt ? { acknowledgedAt: row.acknowledgedAt.toISOString() } : {}),
+    ...(row.acknowledgedBy ? { acknowledgedBy: row.acknowledgedBy } : {}),
+  };
 }
 
 export function initializeAutomationOrchestrator(): void {
   if (initialized) return;
   initialized = true;
-
-  subscribeEvent('message.created', event => {
-    enqueue(event, 'INBOX_ALERT', 'New conversation activity requires routing or response evaluation.');
-  });
-  subscribeEvent('lead.created', event => {
-    enqueue(event, 'FOLLOW_UP_SUGGESTION', 'New lead should be evaluated for next-best follow-up.');
-  });
-  subscribeEvent('lead.updated', event => {
-    enqueue(event, 'AI_INSIGHT', 'Lead changed stage or value; refresh sales insight.');
-  });
-  subscribeEvent('customer.updated', event => {
-    enqueue(event, 'AI_INSIGHT', 'Customer profile changed; refresh customer intelligence.');
-  });
-  subscribeEvent('follow_up.created', event => {
-    enqueue(event, 'FOLLOW_UP_SUGGESTION', 'Follow-up created; evaluate timing and priority.');
-  });
+  subscribeEvent('message.created', event => enqueue(event, 'INBOX_ALERT', 'New conversation activity requires routing or response evaluation.'));
+  subscribeEvent('lead.created', event => enqueue(event, 'FOLLOW_UP_SUGGESTION', 'New lead should be evaluated for next-best follow-up.'));
+  subscribeEvent('lead.updated', event => enqueue(event, 'AI_INSIGHT', 'Lead changed stage or value; refresh sales insight.'));
+  subscribeEvent('customer.updated', event => enqueue(event, 'AI_INSIGHT', 'Customer profile changed; refresh customer intelligence.'));
+  subscribeEvent('follow_up.created', event => enqueue(event, 'FOLLOW_UP_SUGGESTION', 'Follow-up created; evaluate timing and priority.'));
 }
 
-export function getPendingAutomationActions(organizationId: string, limit = 50): AutomationAction[] {
+export async function getPendingAutomationActions(organizationId: string, limit = 50): Promise<AutomationAction[]> {
   const safeLimit = Math.max(1, Math.min(limit, 100));
-  return actions
-    .filter(action => action.organizationId === organizationId && action.status === 'PENDING')
-    .slice(-safeLimit)
-    .reverse();
+  const rows = await prisma.automationAction.findMany({
+    where: { organizationId, status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
+    take: safeLimit,
+  });
+  return rows.map(toAction);
 }
 
-export function getAutomationStatus(organizationId: string): {
-  pending: number;
-  acknowledged: number;
-  total: number;
-  initialized: boolean;
-} {
-  const tenantActions = actions.filter(action => action.organizationId === organizationId);
-  return {
-    pending: tenantActions.filter(action => action.status === 'PENDING').length,
-    acknowledged: tenantActions.filter(action => action.status === 'ACKNOWLEDGED').length,
-    total: tenantActions.length,
-    initialized,
-  };
+export async function getAutomationStatus(organizationId: string): Promise<{ pending: number; acknowledged: number; total: number; initialized: boolean }> {
+  const [pending, acknowledged, total] = await Promise.all([
+    prisma.automationAction.count({ where: { organizationId, status: 'PENDING' } }),
+    prisma.automationAction.count({ where: { organizationId, status: 'ACKNOWLEDGED' } }),
+    prisma.automationAction.count({ where: { organizationId } }),
+  ]);
+  return { pending, acknowledged, total, initialized };
 }
 
-export function acknowledgeAutomationAction(organizationId: string, actionId: string, acknowledgedBy: string): AutomationAction | null {
-  const action = actions.find(item => item.id === actionId && item.organizationId === organizationId);
-  if (!action) return null;
-  if (action.status === 'ACKNOWLEDGED') return action;
-  action.status = 'ACKNOWLEDGED';
-  action.acknowledgedAt = new Date().toISOString();
-  action.acknowledgedBy = acknowledgedBy;
-  return action;
+export async function acknowledgeAutomationAction(organizationId: string, actionId: string, acknowledgedBy: string): Promise<AutomationAction | null> {
+  const result = await prisma.automationAction.updateMany({
+    where: { id: actionId, organizationId, status: 'PENDING' },
+    data: { status: 'ACKNOWLEDGED', acknowledgedAt: new Date(), acknowledgedBy },
+  });
+  if (result.count === 0) {
+    const existing = await prisma.automationAction.findFirst({ where: { id: actionId, organizationId } });
+    return existing ? toAction(existing) : null;
+  }
+  const updated = await prisma.automationAction.findFirst({ where: { id: actionId, organizationId } });
+  return updated ? toAction(updated) : null;
 }
 
 export function clearAutomationActions(): void {
-  actions.length = 0;
+  // Persistence is intentional: actions survive API restarts. Use database cleanup tooling instead of memory reset.
 }
