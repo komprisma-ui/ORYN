@@ -30,7 +30,16 @@ export function publishEvent<TPayload extends Record<string, unknown>>(
   const event: OrynEvent<TPayload> = { id: crypto.randomUUID(), name, organizationId, occurredAt: new Date().toISOString(), payload };
   recordEvent(event);
   const subscribers = new Set<Handler>([...(handlers.get(name) ?? []), ...allHandlers]);
-  for (const handler of subscribers) Promise.resolve(handler(event)).catch(() => undefined);
+  for (const handler of subscribers) {
+    Promise.resolve(handler(event)).catch(error => {
+      console.error('[ORYN event-bus] handler failed', {
+        eventId: event.id,
+        name: event.name,
+        organizationId: event.organizationId,
+        error,
+      });
+    });
+  }
   return event;
 }
 
