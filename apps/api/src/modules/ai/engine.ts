@@ -21,6 +21,15 @@ export type AiResult = {
   provider: 'rules';
 };
 
+export type AiOrchestratorResult = {
+  agent: 'orchestrator';
+  intent: 'SALES_INTENT' | 'SUPPORT_INTENT' | 'GENERAL_INTENT';
+  confidence: number;
+  outputs: AiResult[];
+  recommendedActions: string[];
+  provider: 'rules';
+};
+
 const normalize = (value: string) => value.trim().toLowerCase();
 
 export function runAi(request: AiRequest): AiResult {
@@ -31,7 +40,11 @@ export function runAi(request: AiRequest): AiResult {
 
   switch (request.agent) {
     case 'classification':
-      output = input.includes('harga') || input.includes('beli') ? 'SALES_INTENT' : input.includes('keluhan') || input.includes('komplain') ? 'SUPPORT_INTENT' : 'GENERAL_INTENT';
+      output = input.includes('harga') || input.includes('beli') || input.includes('pesan')
+        ? 'SALES_INTENT'
+        : input.includes('keluhan') || input.includes('komplain') || input.includes('rusak')
+          ? 'SUPPORT_INTENT'
+          : 'GENERAL_INTENT';
       confidence = 0.82;
       break;
     case 'reply':
@@ -60,4 +73,25 @@ export function runAi(request: AiRequest): AiResult {
   }
 
   return { agent: request.agent, output, confidence, actions, provider: 'rules' };
+}
+
+export function runAiOrchestrator(input: string, context?: Record<string, unknown>): AiOrchestratorResult {
+  const classification = runAi({ agent: 'classification', input, context });
+  const intent = classification.output as AiOrchestratorResult['intent'];
+  const selectedAgents: AiAgentName[] = intent === 'SALES_INTENT'
+    ? ['customer', 'sales', 'follow_up', 'reply']
+    : intent === 'SUPPORT_INTENT'
+      ? ['customer', 'summary', 'reply']
+      : ['customer', 'summary', 'insight'];
+
+  const outputs = selectedAgents.map(agent => runAi({ agent, input, context }));
+  const recommendedActions = [...new Set([
+    ...classification.actions,
+    ...outputs.flatMap(result => result.actions),
+  ])];
+  const confidence = outputs.length
+    ? Math.min(0.98, (classification.confidence + outputs.reduce((sum, result) => sum + result.confidence, 0)) / (outputs.length + 1))
+    : classification.confidence;
+
+  return { agent: 'orchestrator', intent, confidence, outputs, recommendedActions, provider: 'rules' };
 }
