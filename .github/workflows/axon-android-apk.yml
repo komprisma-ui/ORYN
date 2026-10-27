@@ -96,6 +96,23 @@ jobs:
           sha256sum "$APK"
           cp "$APK" AXON-AI-TRADING-iconfix.apk
 
+      - name: Upload APK build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXON-AI-TRADING-iconfix-APK
+          path: AXON-AI-TRADING-iconfix.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish downloadable test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: axon-iconfix-${{ github.run_number }}
+          name: AXON AI TRADING — Icon Fix Test ${{ github.run_number }}
+          prerelease: true
+          files: AXON-AI-TRADING-iconfix.apk
+          fail_on_unmatched_files: true
+
       - name: Install and launch APK in Android emulator
         timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
@@ -119,20 +136,3 @@ jobs:
               echo "Fatal exception detected after app launch."
               exit 1
             fi
-
-      - name: Upload APK build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AXON-AI-TRADING-iconfix-APK
-          path: AXON-AI-TRADING-iconfix.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Publish downloadable test release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: axon-iconfix-${{ github.run_number }}
-          name: AXON AI TRADING — Icon Fix Test ${{ github.run_number }}
-          prerelease: true
-          files: AXON-AI-TRADING-iconfix.apk
-          fail_on_unmatched_files: true
