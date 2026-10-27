@@ -77,6 +77,8 @@ jobs:
           test -x "$APKSIGNER"
           test -x "$AAPT"
           "$APKSIGNER" verify --verbose "$APK"
+          # Fail the build if the launcher activity is missing from bytecode.
+          unzip -p "$APK" classes.dex | strings | grep -F "Lcom/axon/aitrading/iconfix/MainActivity;"
           BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | sed -n '1p'
           echo "$BADGING" | grep -F "package: name='com.axon.aitrading.iconfix.debug'"

@@ -13,7 +13,14 @@ android {
         versionCode 2
         versionName '1.0.1-iconfix'
     }
-    sourceSets { main.res.srcDir(generatedIconRes) }
+    // Declare both Java and resource source directories explicitly. An earlier
+    // build produced an APK without MainActivity despite a successful compile.
+    sourceSets {
+        main {
+            java.srcDirs = ['src/main/java']
+            res.srcDirs = ['src/main/res', generatedIconRes]
+        }
+    }
     buildTypes {
         debug { applicationIdSuffix '.debug'; versionNameSuffix '-debug' }
         release { minifyEnabled false }
