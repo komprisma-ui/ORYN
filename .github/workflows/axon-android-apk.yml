@@ -77,8 +77,14 @@ jobs:
           test -x "$APKSIGNER"
           test -x "$AAPT"
           "$APKSIGNER" verify --verbose "$APK"
-          # Fail the build if the launcher activity is missing from bytecode.
-          unzip -p "$APK" classes.dex | strings | grep -F "Lcom/axon/aitrading/iconfix/MainActivity;"
+          # Verify that Java compilation really emitted the launcher activity.
+          ACTIVITY_CLASS="$(find android-wrapper/app/build/intermediates -type f -path '*/com/axon/aitrading/iconfix/MainActivity.class' -print -quit)"
+          test -n "$ACTIVITY_CLASS" && test -s "$ACTIVITY_CLASS"
+          # Inspect the packed DEX class table using the Android SDK tool.
+          DEXDUMP="$(find "$ANDROID_HOME/build-tools" -type f -name dexdump | sort -V | tail -n 1)"
+          test -x "$DEXDUMP"
+          unzip -p "$APK" classes.dex > /tmp/axon-classes.dex
+          "$DEXDUMP" -d /tmp/axon-classes.dex | grep -F "Lcom/axon/aitrading/iconfix/MainActivity;"
           BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | sed -n '1p'
           echo "$BADGING" | grep -F "package: name='com.axon.aitrading.iconfix.debug'"
