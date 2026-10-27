@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+def generatedIconRes = file("$buildDir/generated/res/axonIcon")
+android {
+    namespace 'com.axon.aitrading.iconfix'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.axon.aitrading.iconfix'
+        minSdk 23
+        targetSdk 35
+        versionCode 2
+        versionName '1.0.1-iconfix'
+    }
+    sourceSets { main.res.srcDir(generatedIconRes) }
+    buildTypes {
+        debug { applicationIdSuffix '.debug'; versionNameSuffix '-debug' }
+        release { minifyEnabled false }
+    }
+}
+
+tasks.register('generateAxonIcons') {
+    inputs.file(file('src/main/assets/axon_icon_base64.txt'))
+    outputs.dir(generatedIconRes)
+    doLast {
+        def encoded = file('src/main/assets/axon_icon_base64.txt').text.trim()
+        byte[] bytes = java.util.Base64.getDecoder().decode(encoded)
+        def source = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes))
+        if (source == null) throw new GradleException('AXON source icon could not be decoded')
+        def sizes = ['mipmap-mdpi': 48, 'mipmap-hdpi': 72, 'mipmap-xhdpi': 96,
+                     'mipmap-xxhdpi': 144, 'mipmap-xxxhdpi': 192]
+        sizes.each { folderName, size ->
+            File folder = new File(generatedIconRes, folderName)
+            folder.mkdirs()
+            def rendered = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            def g = rendered.createGraphics()
+            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+            g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY)
+            g.drawImage(source, 0, 0, size, size, null)
+            g.dispose()
+            javax.imageio.ImageIO.write(rendered, 'png', new File(folder, 'ic_launcher.png'))
+        }
+        File foregroundDir = new File(generatedIconRes, 'drawable-nodpi')
+        foregroundDir.mkdirs()
+        def foreground = new java.awt.image.BufferedImage(432, 432, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        def fg = foreground.createGraphics()
+        fg.setColor(new java.awt.Color(4, 12, 28, 255))
+        fg.fillRect(0, 0, 432, 432)
+        fg.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+        fg.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY)
+        fg.drawImage(source, 14, 14, 418, 418, null)
+        fg.dispose()
+        javax.imageio.ImageIO.write(foreground, 'png', new File(foregroundDir, 'ic_launcher_foreground.png'))
+    }
+}
+tasks.named('preBuild').configure { dependsOn('generateAxonIcons') }
