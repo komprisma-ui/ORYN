@@ -40,6 +40,28 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Prepare PNG from selected AXON WebP icon
+        shell: bash
+        working-directory: android-wrapper
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet Pillow
+          python - <<'PY'
+          import base64
+          import io
+          from pathlib import Path
+          from PIL import Image
+
+          assets = Path("app/src/main/assets")
+          raw = base64.b64decode((assets / "axon_icon_base64.txt").read_text().strip(), validate=True)
+          icon = Image.open(io.BytesIO(raw)).convert("RGBA")
+          output = assets / "axon_icon_source.png"
+          icon.save(output, format="PNG", optimize=True)
+          check = Image.open(output)
+          assert check.width > 0 and check.height > 0
+          print(f"AXON launcher source decoded: {check.size[0]}x{check.size[1]} pixels")
+          PY
+
       - name: Build debug APK
         working-directory: android-wrapper
         run: gradle --no-daemon clean assembleDebug
