@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          code="$(curl --location --silent --show-error --output /tmp/axon-dashboard.html --write-out '%{http_code}' --max-time 30 https://axon-ai-trading.vercel.app/)"
+          code="$(curl --location --silent --show-error --output /tmp/axon-dashboard.html --write-out '%{http_code}' --max-time 30 https://axon-ai-trading-eau8ln3e5-komprisma-ui.vercel.app/)"
           echo "Dashboard HTTP status: $code"
           test "$code" = "200"
           grep -Eiq '<!doctype html|<html' /tmp/axon-dashboard.html
