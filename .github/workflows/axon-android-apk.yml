@@ -117,7 +117,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: axon-iconfix-${{ github.run_number }}
-          name: AXON AI TRADING — Icon Fix Test ${{ github.run_number }}
+          name: AXON AI TRADING — Latest Android APK (build ${{ github.run_number }})
           prerelease: true
           files: AXON-AI-TRADING-iconfix.apk
           fail_on_unmatched_files: true
@@ -146,3 +146,31 @@ jobs:
               echo "Fatal exception detected after app launch."
               exit 1
             fi
+
+      - name: Remove obsolete AXON APK test releases
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const currentTag = `axon-iconfix-${context.runNumber}`;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner, repo, per_page: 100
+            });
+            for (const release of releases) {
+              if (!release.prerelease ||
+                  !release.tag_name.startsWith("axon-iconfix-") ||
+                  release.tag_name === currentTag) continue;
+              core.info(`Removing obsolete APK release: ${release.tag_name}`);
+              await github.rest.repos.deleteRelease({
+                owner, repo, release_id: release.id
+              });
+              try {
+                await github.rest.git.deleteRef({
+                  owner, repo, ref: `tags/${release.tag_name}`
+                });
+              } catch (error) {
+                core.warning(`Could not remove tag ${release.tag_name}: ${error.message}`);
+              }
+            }
