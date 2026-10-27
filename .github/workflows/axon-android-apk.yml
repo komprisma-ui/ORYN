@@ -83,6 +83,29 @@ jobs:
           sha256sum "$APK"
           cp "$APK" AXON-AI-TRADING-iconfix.apk
 
+      - name: Install and launch APK in Android emulator
+        timeout-minutes: 10
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -eu
+            timeout 90s adb install -r android-wrapper/app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm list packages | grep -F "package:com.axon.aitrading.iconfix.debug"
+            timeout 30s adb shell monkey -p com.axon.aitrading.iconfix.debug 1
+            sleep 8
+            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep "com.axon.aitrading.iconfix.debug"
+            if adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION"; then
+              echo "Fatal exception detected after app launch."
+              exit 1
+            fi
+
       - name: Upload APK build artifact
         uses: actions/upload-artifact@v4
         with:
