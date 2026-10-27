@@ -61,6 +61,15 @@ jobs:
           print(f"AXON launcher icon prepared: {check.width}x{check.height}")
           PY
 
+      - name: Verify requested AXON dashboard is reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl --location --silent --show-error --output /tmp/axon-dashboard.html --write-out '%{http_code}' --max-time 30 https://trading.vercel.app/)"
+          echo "Dashboard HTTP status: $code"
+          test "$code" = "200"
+          grep -Eiq '<title[^>]*>[^<]*AXON|AXON' /tmp/axon-dashboard.html
+
       - name: Build debug APK
         working-directory: android-wrapper
         run: gradle --no-daemon clean assembleDebug
@@ -114,21 +123,22 @@ jobs:
           fail_on_unmatched_files: true
 
       - name: Install and launch APK in Android emulator
-        timeout-minutes: 12
+        timeout-minutes: 16
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 30
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-boot-timeout: 300
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 480
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -no-snapshot-save
           disable-animations: true
           script: |
             set -eu
             APK="android-wrapper/app/build/outputs/apk/debug/app-debug.apk"
             timeout 90s adb install -r "$APK"
             adb shell pm list packages | grep -F "package:com.axon.aitrading.iconfix.debug"
+            adb logcat -c
             timeout 30s adb shell monkey -p com.axon.aitrading.iconfix.debug 1
             sleep 5
             adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -F "com.axon.aitrading.iconfix.debug"
