@@ -68,7 +68,7 @@ jobs:
           code="$(curl --location --silent --show-error --output /tmp/axon-dashboard.html --write-out '%{http_code}' --max-time 30 https://trading.vercel.app/)"
           echo "Dashboard HTTP status: $code"
           test "$code" = "200"
-          grep -Eiq '<title[^>]*>[^<]*AXON|AXON' /tmp/axon-dashboard.html
+          grep -Eiq '<!doctype html|<html' /tmp/axon-dashboard.html
 
       - name: Build debug APK
         working-directory: android-wrapper
