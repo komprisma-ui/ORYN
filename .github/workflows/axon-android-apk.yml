@@ -80,11 +80,64 @@ jobs:
           # Verify that Java compilation really emitted the launcher activity.
           ACTIVITY_CLASS="$(find android-wrapper/app/build/intermediates -type f -path '*/com/axon/aitrading/iconfix/MainActivity.class' -print -quit)"
           test -n "$ACTIVITY_CLASS" && test -s "$ACTIVITY_CLASS"
-          # Inspect the packed DEX class table using the Android SDK tool.
+          # Inspect every DEX file (Android may split app classes into classes2.dex+).
           DEXDUMP="$(find "$ANDROID_HOME/build-tools" -type f -name dexdump | sort -V | tail -n 1)"
           test -x "$DEXDUMP"
-          unzip -p "$APK" classes.dex > /tmp/axon-classes.dex
-          "$DEXDUMP" -d /tmp/axon-classes.dex | grep -F "Lcom/axon/aitrading/iconfix/MainActivity;"
+          DEX_MATCH=false
+          while IFS= read -r dexfile; do
+            unzip -p "$APK" "$dexfile" > /tmp/axon-classes.dex
+            if "$DEXDUMP" -d /tmp/axon-classes.dex | grep -Fq "Lcom/axon/aitrading/iconfix/MainActivity;"; then
+              echo "Launcher Activity found in $dexfile"
+              DEX_MATCH=true
+              break
+            fi
+          done < <(unzip -Z1 "$APK" | grep -E '^classes([0-9]+)?\\.dex          BADGING="$("$AAPT" dump badging "$APK")"
+          echo "$BADGING" | sed -n '1p'
+          echo "$BADGING" | grep -F "package: name='com.axon.aitrading.iconfix.debug'"
+          sha256sum "$APK"
+          cp "$APK" AXON-AI-TRADING-iconfix.apk
+
+      - name: Install and launch APK in Android emulator
+        timeout-minutes: 10
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -eu
+            timeout 90s adb install -r android-wrapper/app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm list packages | grep -F "package:com.axon.aitrading.iconfix.debug"
+            timeout 30s adb shell monkey -p com.axon.aitrading.iconfix.debug 1
+            sleep 8
+            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep "com.axon.aitrading.iconfix.debug"
+            if adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION"; then
+              echo "Fatal exception detected after app launch."
+              exit 1
+            fi
+
+      - name: Upload APK build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AXON-AI-TRADING-iconfix-APK
+          path: AXON-AI-TRADING-iconfix.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish downloadable test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: axon-iconfix-${{ github.run_number }}
+          name: AXON AI TRADING — Icon Fix Test ${{ github.run_number }}
+          prerelease: true
+          files: AXON-AI-TRADING-iconfix.apk
+          fail_on_unmatched_files: true
+)
+          test "$DEX_MATCH" = true
           BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | sed -n '1p'
           echo "$BADGING" | grep -F "package: name='com.axon.aitrading.iconfix.debug'"
