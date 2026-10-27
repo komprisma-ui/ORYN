@@ -19,7 +19,7 @@ import android.graphics.Color;
  * resolves the launcher activity correctly from the merged manifest.
  */
 public class MainActivity extends Activity {
-    private static final String AXON_URL = "https://trading.vercel.app/";
+    private static final String AXON_URL = "https://axon-ai-trading.vercel.app/";
     private WebView webView;
 
     @Override
@@ -50,9 +50,7 @@ public class MainActivity extends Activity {
                 String scheme = uri.getScheme();
                 String host = uri.getHost();
                 if ("https".equalsIgnoreCase(scheme) && host != null &&
-                    (host.equals("trading.vercel.app") ||
-                     host.equals("axon-ai-trading.vercel.app") ||
-                     host.endsWith(".vercel.app") ||
+                    (host.equals("axon-ai-trading.vercel.app") ||
                      host.equals("deriv.com") || host.endsWith(".deriv.com") ||
                      host.equals("supabase.co") || host.endsWith(".supabase.co"))) {
                     return false;
